@@ -27,7 +27,7 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editSession, setEditSession] = useState<{
-    studentId: string; date: string; startTime: string; endTime: string; status: SessionStatus; notes: string; sessionCount: number; existingId?: string; subject?: string;
+    studentId: string; date: string; startTime: string; endTime: string; status: SessionStatus; notes: string; sessionCount: number; existingId?: string; subject?: string | null;
   } | null>(null);
 
   // Group attendance dialog
