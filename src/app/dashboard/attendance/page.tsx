@@ -64,8 +64,9 @@ export default function AttendancePage() {
     updateNotes: boolean; notes: string;
     updateSubject: boolean; subject: string;
     updateSessionCount: boolean; sessionCount: number;
+    updateDate: boolean; daysToShift: number;
   }>({
-    isOpen: false, updateStatus: false, status: "completed", updateTime: false, startTime: "", endTime: "", updateNotes: false, notes: "", updateSubject: false, subject: "", updateSessionCount: false, sessionCount: 2
+    isOpen: false, updateStatus: false, status: "completed", updateTime: false, startTime: "", endTime: "", updateNotes: false, notes: "", updateSubject: false, subject: "", updateSessionCount: false, sessionCount: 2, updateDate: false, daysToShift: 7
   });
 
   const { t } = useLanguage();
@@ -387,6 +388,12 @@ export default function AttendancePage() {
       
       if (bulkEditDialog.updateSessionCount) {
         updateData.session_count = bulkEditDialog.sessionCount || 1;
+      }
+      
+      if (bulkEditDialog.updateDate && bulkEditDialog.daysToShift) {
+        const d = new Date(originalSession.session_date);
+        d.setDate(d.getDate() + bulkEditDialog.daysToShift);
+        updateData.session_date = d.toISOString().split("T")[0];
       }
       
       const { error } = await supabase.from("sessions").update(updateData).eq("id", sessionId);
@@ -1213,10 +1220,39 @@ export default function AttendancePage() {
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input 
+                  type="checkbox" 
+                  checked={bulkEditDialog.updateDate} 
+                  onChange={(e) => setBulkEditDialog(prev => ({ ...prev, updateDate: e.target.checked }))}
+                  className="rounded border-gray-300 w-4 h-4 text-primary focus:ring-primary"
+                />
+                Cập nhật ngày học (Dời lịch)
+              </label>
+              {bulkEditDialog.updateDate && (
+                <div className="pl-6 space-y-2">
+                  <p className="text-xs text-muted-foreground">Tất cả các buổi đã chọn sẽ được cộng thêm số ngày này.</p>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      type="number" 
+                      min="1" 
+                      value={bulkEditDialog.daysToShift} 
+                      onChange={(e) => setBulkEditDialog(prev => ({ ...prev, daysToShift: parseInt(e.target.value) || 0 }))} 
+                      className="w-[100px] text-sm" 
+                    />
+                    <span className="text-sm">ngày</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkEditDialog(prev => ({ ...prev, isOpen: false }))}>Hủy</Button>
-            <Button onClick={saveBulkEdit} disabled={!bulkEditDialog.updateStatus && !bulkEditDialog.updateTime && !bulkEditDialog.updateNotes && !bulkEditDialog.updateSubject && !bulkEditDialog.updateSessionCount}>
+            <Button onClick={saveBulkEdit} disabled={!bulkEditDialog.updateStatus && !bulkEditDialog.updateTime && !bulkEditDialog.updateNotes && !bulkEditDialog.updateSubject && !bulkEditDialog.updateSessionCount && !bulkEditDialog.updateDate}>
               Lưu {selectedSessionIds.length} buổi
             </Button>
           </DialogFooter>
