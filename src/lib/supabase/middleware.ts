@@ -36,7 +36,8 @@ export async function updateSession(request: NextRequest) {
   // Protected routes
   const isAuthPage =
     request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname === '/register';
+    request.nextUrl.pathname === '/register' ||
+    request.nextUrl.pathname.startsWith('/auth');
 
   if (!user && !isAuthPage && request.nextUrl.pathname !== '/') {
     const url = request.nextUrl.clone();
