@@ -1261,7 +1261,7 @@ export default function AttendancePage() {
             
             <div className="space-y-2">
               <Label>Dời đi bao nhiêu ngày?</Label>
-              <Select value={shiftDialog.daysOption} onValueChange={(v) => setShiftDialog(prev => ({ ...prev, daysOption: v }))}>
+              <Select value={shiftDialog.daysOption} onValueChange={(v) => setShiftDialog(prev => ({ ...prev, daysOption: v || "7" }))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
