@@ -30,6 +30,15 @@ export default function AttendancePage() {
     studentId: string; date: string; startTime: string; endTime: string; status: SessionStatus; notes: string; sessionCount: number; existingId?: string; subject?: string | null;
   } | null>(null);
 
+  const [shiftDialog, setShiftDialog] = useState<{
+    isOpen: boolean;
+    studentId?: string;
+    groupId?: string;
+    fromDate: string;
+    daysOption: string;
+    customDays: string;
+  }>({ isOpen: false, fromDate: "", daysOption: "7", customDays: "7" });
+
   // Group attendance dialog
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupAttendance, setGroupAttendance] = useState<{
@@ -170,6 +179,64 @@ export default function AttendancePage() {
     toast.success("Đã xóa");
     setDialogOpen(false);
     setEditSession(null);
+    loadData();
+  };
+
+  const handleShiftSchedule = async () => {
+    const days = shiftDialog.daysOption === "custom" ? parseInt(shiftDialog.customDays) : parseInt(shiftDialog.daysOption);
+    if (isNaN(days) || days === 0) {
+      toast.error("Số ngày dời không hợp lệ");
+      return;
+    }
+
+    toast.loading("Đang dời lịch...", { id: "shift-schedule" });
+    const supabase = createClient();
+    
+    let targetStudentIds: string[] = [];
+    let cycleToMatch = parseInt(String(selectedCycle)) || 1;
+
+    if (shiftDialog.groupId) {
+      const group = groups.find(g => g.id === shiftDialog.groupId);
+      if (group) {
+        targetStudentIds = group.students.filter(s => s.is_active).map(s => s.id);
+      }
+    } else if (shiftDialog.studentId) {
+      targetStudentIds = [shiftDialog.studentId];
+    }
+
+    if (targetStudentIds.length === 0) return;
+
+    const targetSessions = sessions.filter(s => 
+      targetStudentIds.includes(s.student_id) && 
+      (s.cycle_number || 1) === cycleToMatch &&
+      s.session_date >= shiftDialog.fromDate
+    );
+
+    if (targetSessions.length === 0) {
+      toast.error("Không tìm thấy buổi học nào để dời", { id: "shift-schedule" });
+      setShiftDialog(prev => ({ ...prev, isOpen: false }));
+      return;
+    }
+
+    let hasError = false;
+    for (const session of targetSessions) {
+      const d = new Date(session.session_date);
+      d.setDate(d.getDate() + days);
+      const newDateStr = d.toISOString().split("T")[0];
+      
+      const { error } = await supabase.from("sessions").update({ session_date: newDateStr }).eq("id", session.id);
+      if (error) hasError = true;
+    }
+
+    if (hasError) {
+      toast.error("Có lỗi xảy ra khi dời lịch một số buổi", { id: "shift-schedule" });
+    } else {
+      toast.success(`Đã dời lịch ${targetSessions.length} buổi (thêm ${days} ngày)!`, { id: "shift-schedule" });
+    }
+
+    setShiftDialog(prev => ({ ...prev, isOpen: false }));
+    setDialogOpen(false);
+    setGroupDialogOpen(false);
     loadData();
   };
 
@@ -849,6 +916,14 @@ export default function AttendancePage() {
                 Xóa
               </Button>
             )}
+            {editSession?.existingId && (
+              <Button variant="outline" size="sm" onClick={() => {
+                setShiftDialog({ isOpen: true, studentId: editSession.studentId, fromDate: editSession.date, daysOption: "7", customDays: "7" });
+              }} className="mr-auto text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="m9 18 6-6-6-6"/></svg>
+                Dời lịch
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Hủy</Button>
             <Button onClick={saveSession}>Lưu</Button>
           </DialogFooter>
@@ -952,6 +1027,14 @@ export default function AttendancePage() {
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
               Tất cả có mặt
             </Button>
+            {groupAttendance && groupAttendance.members.some(m => m.existingId) && (
+              <Button variant="outline" size="sm" onClick={() => {
+                setShiftDialog({ isOpen: true, groupId: groupAttendance.groupId, fromDate: groupAttendance.date, daysOption: "7", customDays: "7" });
+              }} className="text-orange-600 border-orange-200 hover:bg-orange-50 dark:hover:bg-orange-950 mr-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="m9 18 6-6-6-6"/></svg>
+                Dời lịch
+              </Button>
+            )}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setGroupDialogOpen(false)}>Hủy</Button>
               <Button onClick={saveGroupAttendance}>Lưu tất cả</Button>
@@ -1163,6 +1246,54 @@ export default function AttendancePage() {
           </div>
         </div>
       )}
+      {/* Shift Schedule Dialog */}
+      <Dialog open={shiftDialog.isOpen} onOpenChange={(open) => setShiftDialog(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Dời lịch học tự động</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-orange-50 dark:bg-orange-950/30 text-orange-800 dark:text-orange-200 text-sm rounded-lg border border-orange-200 dark:border-orange-800">
+              Bạn đang dời buổi học ngày <strong>{shiftDialog.fromDate ? formatDate(shiftDialog.fromDate) : ""}</strong>.
+              <br/>
+              Tất cả các buổi học <strong>từ ngày này trở về sau</strong> (trong cùng chu kỳ) sẽ được dời thêm số ngày tương ứng để bảo toàn chuỗi lịch học.
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Dời đi bao nhiêu ngày?</Label>
+              <Select value={shiftDialog.daysOption} onValueChange={(v) => setShiftDialog(prev => ({ ...prev, daysOption: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">7 ngày (Dời đúng 1 tuần)</SelectItem>
+                  <SelectItem value="14">14 ngày (Dời 2 tuần)</SelectItem>
+                  <SelectItem value="2">2 ngày</SelectItem>
+                  <SelectItem value="3">3 ngày</SelectItem>
+                  <SelectItem value="custom">Tùy chỉnh...</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {shiftDialog.daysOption === "custom" && (
+              <div className="space-y-2">
+                <Label>Nhập số ngày muốn dời</Label>
+                <Input 
+                  type="number" 
+                  min="1" 
+                  value={shiftDialog.customDays} 
+                  onChange={(e) => setShiftDialog(prev => ({ ...prev, customDays: e.target.value }))}
+                  placeholder="Ví dụ: 5"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShiftDialog(prev => ({ ...prev, isOpen: false }))}>Hủy</Button>
+            <Button onClick={handleShiftSchedule}>Xác nhận dời lịch</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
