@@ -47,6 +47,9 @@ export const en: TranslationKey = {
     loginHere: "Sign in here",
     loggingIn: "Signing in...",
     registering: "Creating account...",
+    orContinueWith: "Or continue with",
+    continueWithGoogle: "Continue with Google",
+    continueWithFacebook: "Continue with Facebook",
   },
   dashboard: {
     title: "Dashboard",

@@ -45,6 +45,9 @@ export const vi = {
     loginHere: "Đăng nhập tại đây",
     loggingIn: "Đang đăng nhập...",
     registering: "Đang tạo tài khoản...",
+    orContinueWith: "Hoặc tiếp tục với",
+    continueWithGoogle: "Tiếp tục với Google",
+    continueWithFacebook: "Tiếp tục với Facebook",
   },
   dashboard: {
     title: "Tổng quan",
