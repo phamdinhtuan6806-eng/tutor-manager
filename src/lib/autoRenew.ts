@@ -81,8 +81,38 @@ export async function renewStudentCycle(supabase: any, student: any) {
     .limit(1)
     .single();
 
-  let currentDate = lastSession ? parseISO(lastSession.session_date) : new Date();
-  currentDate = addDays(currentDate, 1); // Start from the day after the last session
+  let currentDate: Date;
+  
+  if (lastSession) {
+    currentDate = addDays(parseISO(lastSession.session_date), 1);
+  } else if (student.group_id) {
+    // New student in group — find the last session from any group member
+    const { data: groupMembers } = await supabase
+      .from("students")
+      .select("id")
+      .eq("group_id", student.group_id)
+      .eq("is_active", true)
+      .neq("id", student.id);
+    
+    let groupLastDate: string | null = null;
+    if (groupMembers && groupMembers.length > 0) {
+      const memberIds = groupMembers.map((m: any) => m.id);
+      const { data: groupLastSession } = await supabase
+        .from("sessions")
+        .select("session_date")
+        .in("student_id", memberIds)
+        .order("session_date", { ascending: false })
+        .limit(1)
+        .single();
+      if (groupLastSession) {
+        groupLastDate = groupLastSession.session_date;
+      }
+    }
+    
+    currentDate = groupLastDate ? addDays(parseISO(groupLastDate), 1) : new Date();
+  } else {
+    currentDate = new Date();
+  }
 
   const newSessions = [];
   let generatedCount = 0;

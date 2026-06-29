@@ -180,6 +180,23 @@ export default function EditGroupPage({ params }: { params: Promise<{ id: string
       }
 
       // Handle existing members (update tuition) and new members (create)
+      // Track IDs of newly added students so we can create sessions for them
+      const newlyAddedStudentIds: string[] = [];
+      
+      // Get group's current_cycle from existing members
+      const existingMemberIds = activeMembers.filter(m => m.id && m.isExisting).map(m => m.id!);
+      let groupCurrentCycle = 1;
+      if (existingMemberIds.length > 0) {
+        const { data: existingStudent } = await supabase
+          .from("students")
+          .select("current_cycle")
+          .eq("id", existingMemberIds[0])
+          .single();
+        if (existingStudent) {
+          groupCurrentCycle = existingStudent.current_cycle || 1;
+        }
+      }
+      
       for (const member of activeMembers) {
         if (member.id && member.isExisting) {
           // Update tuition for existing members
@@ -193,10 +210,13 @@ export default function EditGroupPage({ params }: { params: Promise<{ id: string
             group_id: id,
             tuition_type: form.tuition_type,
             tuition_amount: parseInt(member.tuition_amount),
+            package_size: parseInt(form.package_size),
+            current_cycle: groupCurrentCycle,
           }).eq("id", member.id);
+          newlyAddedStudentIds.push(member.id);
         } else {
           // Create new student
-          await supabase.from("students").insert({
+          const { data: newStudent } = await supabase.from("students").insert({
             full_name: member.full_name,
             parent_phone: member.parent_phone || null,
             class: member.class || form.class.trim() || null,
@@ -206,7 +226,47 @@ export default function EditGroupPage({ params }: { params: Promise<{ id: string
             tuition_amount: parseInt(member.tuition_amount),
             package_size: parseInt(form.package_size),
             start_date: form.start_date || null,
-          });
+            current_cycle: groupCurrentCycle,
+          }).select("id").single();
+          if (newStudent) {
+            newlyAddedStudentIds.push(newStudent.id);
+          }
+        }
+      }
+
+      // Generate sessions for newly added students
+      // Copy remaining sessions (from today onwards) from existing group members
+      if (newlyAddedStudentIds.length > 0 && existingMemberIds.length > 0) {
+        const today = new Date().toISOString().split("T")[0];
+        
+        // Get sessions from ONE existing member as a template (all members share the same dates)
+        const { data: templateSessions } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("student_id", existingMemberIds[0])
+          .eq("cycle_number", groupCurrentCycle)
+          .gte("session_date", today)
+          .order("session_date");
+        
+        if (templateSessions && templateSessions.length > 0) {
+          const sessionInserts = [];
+          for (const newStudentId of newlyAddedStudentIds) {
+            for (const tmpl of templateSessions) {
+              sessionInserts.push({
+                student_id: newStudentId,
+                session_date: tmpl.session_date,
+                subject: tmpl.subject || form.subject.trim() || null,
+                status: "scheduled",
+                notes: tmpl.notes || null,
+                cycle_number: groupCurrentCycle,
+                session_count: 1,
+              });
+            }
+          }
+          if (sessionInserts.length > 0) {
+            await supabase.from("sessions").insert(sessionInserts);
+            toast.success(`Đã tạo ${templateSessions.length} buổi học cho ${newlyAddedStudentIds.length} học sinh mới`);
+          }
         }
       }
 
