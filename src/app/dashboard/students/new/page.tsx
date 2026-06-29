@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { DAY_NAMES } from "@/lib/constants";
 import { eachDayOfInterval, format, getDay, parseISO, isSameDay } from "date-fns";
+import { getDayOfWeekVN } from "@/lib/utils";
 
 export default function NewStudentPage() {
   const router = useRouter();
@@ -45,9 +46,16 @@ export default function NewStudentPage() {
 
   const [qrFile, setQrFile] = useState<File | null>(null);
   const [qrPreview, setQrPreview] = useState<string>("");
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   useEffect(() => {
     loadDefaultSettings();
+    
+    setCurrentTime(new Date());
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const loadDefaultSettings = async () => {
@@ -296,6 +304,32 @@ export default function NewStudentPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-20">
+      {/* Real-time Clock Banner */}
+      {currentTime && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-primary/10 via-primary/5 to-transparent no-print">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {getDayOfWeekVN(currentTime.getDay())}, Ngày {currentTime.getDate()} tháng {currentTime.getMonth() + 1} năm {currentTime.getFullYear()}
+                </p>
+                <h2 className="text-2xl font-bold text-primary tracking-tight">
+                  {currentTime.toLocaleTimeString('vi-VN')}
+                </h2>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-background/50 border-primary/20 text-primary">
+                Thời gian thực
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
