@@ -71,6 +71,16 @@ export default function AttendancePage() {
 
   const { t } = useLanguage();
 
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const loadData = useCallback(async () => {
     const supabase = createClient();
 
@@ -449,6 +459,32 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
+      {/* Real-time Clock Banner */}
+      {currentTime && (
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-primary/10 via-primary/5 to-transparent no-print">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {getDayOfWeekVN(currentTime.toISOString().split('T')[0])}, Ngày {currentTime.getDate()} tháng {currentTime.getMonth() + 1} năm {currentTime.getFullYear()}
+                </p>
+                <h2 className="text-2xl font-bold text-primary tracking-tight">
+                  {currentTime.toLocaleTimeString('vi-VN')}
+                </h2>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Badge variant="outline" className="bg-background/50 border-primary/20 text-primary">
+                Thời gian thực
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{t("attendance", "title")}</h1>
