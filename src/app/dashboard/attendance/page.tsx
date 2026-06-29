@@ -469,7 +469,7 @@ export default function AttendancePage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  {getDayOfWeekVN(currentTime.toISOString().split('T')[0])}, Ngày {currentTime.getDate()} tháng {currentTime.getMonth() + 1} năm {currentTime.getFullYear()}
+                  {getDayOfWeekVN(currentTime.getDay())}, Ngày {currentTime.getDate()} tháng {currentTime.getMonth() + 1} năm {currentTime.getFullYear()}
                 </p>
                 <h2 className="text-2xl font-bold text-primary tracking-tight">
                   {currentTime.toLocaleTimeString('vi-VN')}
