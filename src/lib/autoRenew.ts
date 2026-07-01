@@ -68,8 +68,24 @@ export async function renewStudentCycle(supabase: any, student: any) {
     }
   }
 
+  // If there's no fixed schedule, we just advance the cycle without creating auto-sessions
   if (schedulePatterns.length === 0) {
-    return { error: "Học sinh/Nhóm chưa được thiết lập lịch học cố định. Vui lòng vào Sửa học sinh/nhóm để thêm Lịch học cố định." };
+    if (isSlidingWindow) {
+      await supabase.from("sessions").delete().eq("student_id", student.id).eq("cycle_number", 1);
+      await supabase.from("payments").delete().eq("student_id", student.id).eq("cycle_number", 1);
+      await supabase.from("monthly_comments").delete().eq("student_id", student.id).eq("cycle_number", 1);
+      
+      await supabase.from("sessions").update({ cycle_number: 1 }).eq("student_id", student.id).eq("cycle_number", 2);
+      await supabase.from("payments").update({ cycle_number: 1 }).eq("student_id", student.id).eq("cycle_number", 2);
+      await supabase.from("monthly_comments").update({ cycle_number: 1 }).eq("student_id", student.id).eq("cycle_number", 2);
+    }
+
+    await supabase.from("students").update({ current_cycle: nextCycle }).eq("id", student.id);
+    if (student.group_id) {
+      await supabase.from("student_groups").update({ current_cycle: nextCycle }).eq("id", student.group_id);
+    }
+    
+    return { success: true };
   }
 
   // Find the exact date of the last session to know where to start generating
