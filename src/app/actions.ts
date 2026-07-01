@@ -18,7 +18,7 @@ export async function forceRenewStudentCycle(studentId: string) {
   if (res?.error) {
     return { success: false, error: res.error };
   }
-  return { success: true, warning: res.warning };
+  return { success: true };
 }
 export async function forceRestorePastCycle(studentId: string, endDateStr: string) {
   const supabase = await createClient();
