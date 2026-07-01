@@ -53,6 +53,59 @@ export async function determineCycleStatus(
   };
 }
 
+async function deduceSchedulePatterns(supabase: any, studentId: string) {
+  const { data: latestSession } = await supabase
+    .from("sessions")
+    .select("cycle_number")
+    .eq("student_id", studentId)
+    .order("session_date", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!latestSession) return [];
+
+  const targetCycle = latestSession.cycle_number;
+
+  const { data: pastSessions } = await supabase
+    .from("sessions")
+    .select("session_date, notes")
+    .eq("student_id", studentId)
+    .eq("cycle_number", targetCycle)
+    .order("session_date", { ascending: false });
+
+  if (!pastSessions || pastSessions.length === 0) return [];
+
+  const deducedPatterns: any[] = [];
+  const seenDays = new Set();
+  
+  for (const s of pastSessions) {
+    const d = parseISO(s.session_date);
+    const dayIndex = getDay(d);
+    
+    if (!seenDays.has(dayIndex)) {
+      seenDays.add(dayIndex);
+      
+      let start_time = "19:00";
+      let end_time = "21:00";
+      
+      if (s.notes) {
+        const timeMatch = s.notes.match(/^(\d{2}:\d{2}(?::\d{2})?)\s*-\s*(\d{2}:\d{2}(?::\d{2})?)/);
+        if (timeMatch) {
+          start_time = timeMatch[1].substring(0, 5);
+          end_time = timeMatch[2].substring(0, 5);
+        }
+      }
+      
+      deducedPatterns.push({
+        day_of_week: dayIndex,
+        start_time,
+        end_time
+      });
+    }
+  }
+  return deducedPatterns;
+}
+
 // ===== Auto-renew check =====
 
 export async function checkAndAutoRenewCycles(supabase: any) {
@@ -116,7 +169,7 @@ export async function renewStudentCycle(supabase: any, student: any) {
   const isSlidingWindow = currentCycle >= 2;
   const nextCycle = isSlidingWindow ? 2 : currentCycle + 1;
 
-  // Get schedule patterns
+  // Combine fixed schedules and deduced patterns
   let schedulePatterns = student.schedules || [];
 
   if (student.group_id) {
@@ -124,16 +177,18 @@ export async function renewStudentCycle(supabase: any, student: any) {
       .from("group_schedules")
       .select("*")
       .eq("group_id", student.group_id);
-    if (groupScheds) {
+    if (groupScheds && groupScheds.length > 0) {
       schedulePatterns = groupScheds;
     }
   }
 
+  // If no explicit schedules, deduce from past sessions
   if (schedulePatterns.length === 0) {
-    return {
-      error:
-        "Học sinh/Nhóm chưa được thiết lập lịch học cố định. Vui lòng vào Sửa học sinh/nhóm để thêm Lịch học cố định.",
-    };
+    schedulePatterns = await deduceSchedulePatterns(supabase, student.id);
+  }
+
+  if (schedulePatterns.length === 0) {
+    return { error: "Không tìm thấy dữ liệu buổi học cũ để tự động tạo lịch. Vui lòng tự thêm ít nhất 1 buổi học thủ công trước khi tự động qua chu kỳ mới." };
   }
 
   // Find the exact date of the last session to know where to start generating
@@ -321,16 +376,18 @@ export async function restorePastCycle(
       .from("group_schedules")
       .select("*")
       .eq("group_id", student.group_id);
-    if (groupScheds) {
+    if (groupScheds && groupScheds.length > 0) {
       schedulePatterns = groupScheds;
     }
   }
 
+  // If no explicit schedules, deduce from past sessions
   if (schedulePatterns.length === 0) {
-    return {
-      error:
-        "Học sinh/Nhóm chưa được thiết lập lịch học cố định. Vui lòng vào Sửa học sinh/nhóm để thêm Lịch học cố định.",
-    };
+    schedulePatterns = await deduceSchedulePatterns(supabase, student.id);
+  }
+
+  if (schedulePatterns.length === 0) {
+    return { error: "Không tìm thấy dữ liệu buổi học cũ để khôi phục lịch. Vui lòng tự thêm ít nhất 1 buổi học thủ công trước." };
   }
 
   // Check if cycle 1 already has data

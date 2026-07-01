@@ -11,8 +11,9 @@ export async function triggerAutoRenew() {
 
 export async function forceRenewStudentCycle(studentId: string) {
   const supabase = await createClient();
-  const { data: student } = await supabase.from("students").select("*, schedules(*)").eq("id", studentId).single();
+  const { data: student } = await supabase.from("students").select("*").eq("id", studentId).single();
   if (!student) return { success: false, error: "Không tìm thấy học sinh" };
+  
   const res = await renewStudentCycle(supabase, student);
   if (res?.error) {
     return { success: false, error: res.error };
@@ -22,9 +23,11 @@ export async function forceRenewStudentCycle(studentId: string) {
 
 export async function forceRestorePastCycle(studentId: string, endDateStr: string, overwrite: boolean = false) {
   const supabase = await createClient();
-  const { data: student } = await supabase.from("students").select("*, schedules(*)").eq("id", studentId).single();
+  const { data: student } = await supabase.from("students").select("*").eq("id", studentId).single();
   if (!student) return { success: false, error: "Không tìm thấy học sinh" };
+
   const res = await restorePastCycle(supabase, student, endDateStr, overwrite);
+
   if (res?.error) {
     // Special case: cycle 1 already has data, need user confirmation
     if (res.error === "CYCLE_1_EXISTS") {
