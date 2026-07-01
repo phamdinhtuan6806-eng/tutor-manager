@@ -85,7 +85,7 @@ export async function renewStudentCycle(supabase: any, student: any) {
       await supabase.from("student_groups").update({ current_cycle: nextCycle }).eq("id", student.group_id);
     }
     
-    return { success: true };
+    return { success: true, warning: "Học sinh/Nhóm chưa có Lịch học cố định nên chu kỳ mới không có buổi học tự động." };
   }
 
   // Find the exact date of the last session to know where to start generating

@@ -607,7 +607,11 @@ export default function AttendancePage() {
                 toast.loading("Đang tạo chu kỳ mới...", { id: "renew" });
                 const res = await forceRenewStudentCycle(student.id);
                 if (res.success) {
-                  toast.success("Đã bắt đầu chu kỳ mới!", { id: "renew" });
+                  if (res.warning) {
+                    toast.warning(res.warning, { id: "renew" });
+                  } else {
+                    toast.success("Đã bắt đầu chu kỳ mới!", { id: "renew" });
+                  }
                   setSelectedCycle(studentCycle + 1);
                   loadData();
                 } else {
@@ -803,6 +807,7 @@ export default function AttendancePage() {
                             onClick={async () => {
                               toast.loading("Đang tạo chu kỳ mới cho nhóm...", { id: "renew-group" });
                               let hasError = false;
+                              let warningMsg = "";
                               for (const member of groupMembers) {
                                 const res = await forceRenewStudentCycle(member.id);
                                 if (!res.success) {
@@ -810,9 +815,14 @@ export default function AttendancePage() {
                                   toast.error(`Lỗi tạo lịch cho ${member.full_name}: ${res.error}`, { id: "renew-group" });
                                   break;
                                 }
+                                if (res.warning) warningMsg = res.warning;
                               }
                               if (!hasError) {
-                                toast.success("Đã bắt đầu chu kỳ mới!", { id: "renew-group" });
+                                if (warningMsg) {
+                                  toast.warning(warningMsg, { id: "renew-group", duration: 5000 });
+                                } else {
+                                  toast.success("Đã bắt đầu chu kỳ mới!", { id: "renew-group" });
+                                }
                                 setSelectedCycle(groupCycle + 1);
                                 loadData();
                               }
