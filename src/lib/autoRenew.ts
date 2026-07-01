@@ -2,6 +2,59 @@ import { createClient } from "@supabase/supabase-js";
 import { addDays, subDays, format, getDay, parseISO } from "date-fns";
 import type { Student, StudentGroup } from "./types";
 
+async function deduceSchedulePatterns(supabase: any, studentId: string) {
+  const { data: latestSession } = await supabase
+    .from("sessions")
+    .select("cycle_number")
+    .eq("student_id", studentId)
+    .order("session_date", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!latestSession) return [];
+
+  const targetCycle = latestSession.cycle_number;
+
+  const { data: pastSessions } = await supabase
+    .from("sessions")
+    .select("session_date, notes")
+    .eq("student_id", studentId)
+    .eq("cycle_number", targetCycle)
+    .order("session_date", { ascending: false });
+
+  if (!pastSessions || pastSessions.length === 0) return [];
+
+  const deducedPatterns: any[] = [];
+  const seenDays = new Set();
+  
+  for (const s of pastSessions) {
+    const d = parseISO(s.session_date);
+    const dayIndex = getDay(d);
+    
+    if (!seenDays.has(dayIndex)) {
+      seenDays.add(dayIndex);
+      
+      let start_time = "19:00";
+      let end_time = "21:00";
+      
+      if (s.notes) {
+        const timeMatch = s.notes.match(/^(\d{2}:\d{2}(?::\d{2})?)\s*-\s*(\d{2}:\d{2}(?::\d{2})?)/);
+        if (timeMatch) {
+          start_time = timeMatch[1].substring(0, 5);
+          end_time = timeMatch[2].substring(0, 5);
+        }
+      }
+      
+      deducedPatterns.push({
+        day_of_week: dayIndex,
+        start_time,
+        end_time
+      });
+    }
+  }
+  return deducedPatterns;
+}
+
 // This file needs a service role key to bypass RLS if running via cron, 
 // but since we are running on user request, we can use the regular client.
 // However, server actions usually use createServerClient.
@@ -55,21 +108,11 @@ export async function renewStudentCycle(supabase: any, student: any) {
   const nextCycle = isSlidingWindow ? 2 : currentCycle + 1;
   const packageSize = student.package_size || 12;
 
-  // We need the schedule patterns. For group students, schedules are in group_schedules
-  let schedulePatterns = student.schedules || [];
-  
-  if (student.group_id) {
-    const { data: groupScheds } = await supabase
-      .from("group_schedules")
-      .select("*")
-      .eq("group_id", student.group_id);
-    if (groupScheds) {
-      schedulePatterns = groupScheds;
-    }
-  }
+  // Remove Fixed Schedule logic. Always deduce from past sessions.
+  let schedulePatterns = await deduceSchedulePatterns(supabase, student.id);
 
   if (schedulePatterns.length === 0) {
-    return { error: "Học sinh/Nhóm chưa được thiết lập lịch học cố định. Vui lòng vào Sửa học sinh/nhóm để thêm Lịch học cố định." };
+    return { error: "Không tìm thấy dữ liệu buổi học cũ để tự động tạo lịch. Vui lòng tự thêm ít nhất 1 buổi học thủ công trước khi tự động qua chu kỳ mới." };
   }
 
   // Find the exact date of the last session to know where to start generating
@@ -177,20 +220,11 @@ export async function renewStudentCycle(supabase: any, student: any) {
 export async function restorePastCycle(supabase: any, student: any, endDateStr: string) {
   const packageSize = student.package_size || 12;
 
-  let schedulePatterns = student.schedules || [];
-  
-  if (student.group_id) {
-    const { data: groupScheds } = await supabase
-      .from("group_schedules")
-      .select("*")
-      .eq("group_id", student.group_id);
-    if (groupScheds) {
-      schedulePatterns = groupScheds;
-    }
-  }
+  // Always deduce from past sessions
+  let schedulePatterns = await deduceSchedulePatterns(supabase, student.id);
 
   if (schedulePatterns.length === 0) {
-    return { error: "Học sinh/Nhóm chưa được thiết lập lịch học cố định. Vui lòng vào Sửa học sinh/nhóm để thêm Lịch học cố định." };
+    return { error: "Không tìm thấy dữ liệu buổi học cũ để khôi phục lịch. Vui lòng tự thêm ít nhất 1 buổi học thủ công trước." };
   }
 
   let currentDate = parseISO(endDateStr);

@@ -14,10 +14,6 @@ export async function forceRenewStudentCycle(studentId: string) {
   const { data: student } = await supabase.from("students").select("*").eq("id", studentId).single();
   if (!student) return { success: false, error: "Không tìm thấy học sinh" };
   
-  // Explicitly fetch schedules
-  const { data: schedules } = await supabase.from("schedules").select("*").eq("student_id", studentId);
-  student.schedules = schedules || [];
-  
   const res = await renewStudentCycle(supabase, student);
   if (res?.error) {
     return { success: false, error: res.error };
@@ -28,10 +24,6 @@ export async function forceRestorePastCycle(studentId: string, endDateStr: strin
   const supabase = await createClient();
   const { data: student } = await supabase.from("students").select("*").eq("id", studentId).single();
   if (!student) return { success: false, error: "Không tìm thấy học sinh" };
-  
-  // Explicitly fetch schedules
-  const { data: schedules } = await supabase.from("schedules").select("*").eq("student_id", studentId);
-  student.schedules = schedules || [];
   
   const res = await restorePastCycle(supabase, student, endDateStr);
   if (res?.error) {
