@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { formatCurrency, formatDate, getDayOfWeekVN, formatTime } from "@/lib/utils";
 import { SESSION_STATUS_LABELS, SESSION_STATUS_COLORS, SESSION_STATUS_ICONS, MONTHS } from "@/lib/constants";
 import { toast } from "sonner";
-import { forceRenewStudentCycle, forceRestorePastCycle } from "@/app/actions";
+import { forceRenewStudentCycle, forceRestorePastCycle, getCycleStatus } from "@/app/actions";
 import type { Student, Schedule, Session, SessionStatus, StudentGroup, GroupSchedule } from "@/lib/types";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 
@@ -52,7 +52,7 @@ export default function AttendancePage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [selectedCycle, setSelectedCycle] = useState<number>(1);
   const [maxCycle, setMaxCycle] = useState<number>(1);
-  const [pastCycleDialog, setPastCycleDialog] = useState<{ isOpen: boolean; studentId: string; endDate: string }>({ isOpen: false, studentId: "", endDate: new Date().toISOString().split("T")[0] });
+  const [pastCycleDialog, setPastCycleDialog] = useState<{ isOpen: boolean; studentId: string; endDate: string; overwrite: boolean; showOverwriteConfirm: boolean }>({ isOpen: false, studentId: "", endDate: new Date().toISOString().split("T")[0], overwrite: false, showOverwriteConfirm: false });
   
   // Multi-select for bulk edit
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -251,18 +251,26 @@ export default function AttendancePage() {
     loadData();
   };
 
-  const handleRestorePastCycle = async () => {
+  const handleRestorePastCycle = async (forceOverwrite?: boolean) => {
     toast.loading("Đang khôi phục kỳ cũ...", { id: "restore" });
     const isGroup = viewMode === "group";
+    const useOverwrite = forceOverwrite || false;
     
     let hasError = false;
+    let needsOverwrite = false;
     if (isGroup) {
       const group = groups.find(g => g.id === pastCycleDialog.studentId);
       if (group) {
         const activeMembers = group.students.filter(s => s.is_active);
         for (const member of activeMembers) {
-          const res = await forceRestorePastCycle(member.id, pastCycleDialog.endDate);
+          const res = await forceRestorePastCycle(member.id, pastCycleDialog.endDate, useOverwrite);
           if (!res.success) {
+            if (res.error === "CYCLE_1_EXISTS") {
+              needsOverwrite = true;
+              toast.dismiss("restore");
+              setPastCycleDialog(prev => ({ ...prev, showOverwriteConfirm: true }));
+              break;
+            }
             hasError = true;
             toast.error(`Lỗi tạo lịch cho ${member.full_name}: ${res.error}`, { id: "restore" });
             break;
@@ -270,16 +278,22 @@ export default function AttendancePage() {
         }
       }
     } else {
-      const res = await forceRestorePastCycle(pastCycleDialog.studentId, pastCycleDialog.endDate);
+      const res = await forceRestorePastCycle(pastCycleDialog.studentId, pastCycleDialog.endDate, useOverwrite);
       if (!res.success) {
-        hasError = true;
-        toast.error("Lỗi: " + res.error, { id: "restore" });
+        if (res.error === "CYCLE_1_EXISTS") {
+          needsOverwrite = true;
+          toast.dismiss("restore");
+          setPastCycleDialog(prev => ({ ...prev, showOverwriteConfirm: true }));
+        } else {
+          hasError = true;
+          toast.error("Lỗi: " + res.error, { id: "restore" });
+        }
       }
     }
     
-    if (!hasError) {
+    if (!hasError && !needsOverwrite) {
       toast.success("Đã khôi phục kỳ cũ thành công!", { id: "restore" });
-      setPastCycleDialog(prev => ({ ...prev, isOpen: false }));
+      setPastCycleDialog(prev => ({ ...prev, isOpen: false, showOverwriteConfirm: false, overwrite: false }));
       setSelectedCycle(2);
       loadData();
     }
@@ -492,10 +506,12 @@ export default function AttendancePage() {
         </div>
         <div className="flex items-center gap-2 no-print">
           <Select value={String(selectedCycle)} onValueChange={(v) => { if (v) setSelectedCycle(parseInt(v)); }}>
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {Array.from({ length: maxCycle }, (_, i) => i + 1).map((c) => (
-                <SelectItem key={c} value={String(c)}>Chu kỳ {c}</SelectItem>
+                <SelectItem key={c} value={String(c)}>
+                  Chu kỳ {c} {maxCycle >= 2 ? (c < maxCycle ? "(Kì cũ)" : "(Kì hiện tại)") : "(Kì hiện tại)"}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -581,7 +597,10 @@ export default function AttendancePage() {
                 ? completedCount * student.tuition_amount
                 : student.tuition_amount;
                 
-              const canRenew = studentSessions.length > 0 && studentSessions.filter(s => s.status === "completed").length >= studentSessions.length;
+              // Renew based on DATE, not status: all session dates must be in the past
+              const todayStr = new Date().toISOString().split("T")[0];
+              const allSessionsInPast = studentSessions.length > 0 && studentSessions.every(s => s.session_date < todayStr);
+              const canRenew = allSessionsInPast;
               
               const handleRenew = async () => {
                 toast.loading("Đang tạo chu kỳ mới...", { id: "renew" });
@@ -623,12 +642,10 @@ export default function AttendancePage() {
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="m9 11 3 3L22 4"/></svg>
                             {isMultiSelectMode ? "Tắt chọn nhiều" : "Chọn nhiều"}
                           </Button>
-                          {studentCycle === 1 && (
-                            <Button onClick={() => setPastCycleDialog({ isOpen: true, studentId: student.id, endDate: new Date().toISOString().split("T")[0] })} size="sm" variant="outline" className="shadow-sm">
+                          <Button onClick={() => setPastCycleDialog({ isOpen: true, studentId: student.id, endDate: new Date().toISOString().split("T")[0], overwrite: false, showOverwriteConfirm: false })} size="sm" variant="outline" className="shadow-sm">
                               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                               Thêm kỳ quá khứ
-                            </Button>
-                          )}
+                          </Button>
                           {canRenew && (
                           <Button onClick={handleRenew} size="sm" variant="outline" className="shadow-sm border-primary/30 hover:bg-primary/5">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21v-5h5"/></svg>
@@ -766,9 +783,8 @@ export default function AttendancePage() {
                           ))}
                         </div>
                         
-                        {groupCycle === 1 && (
-                          <Button 
-                            onClick={() => setPastCycleDialog({ isOpen: true, studentId: group.id, endDate: new Date().toISOString().split("T")[0] })} 
+                        <Button 
+                            onClick={() => setPastCycleDialog({ isOpen: true, studentId: group.id, endDate: new Date().toISOString().split("T")[0], overwrite: false, showOverwriteConfirm: false })} 
                             size="sm" 
                             variant="outline" 
                             className="shadow-sm"
@@ -776,7 +792,6 @@ export default function AttendancePage() {
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                             Thêm kỳ quá khứ
                           </Button>
-                        )}
                         
                         {uniqueDates.length > 0 && Array.from(dateStatusMap.values()).every(s => s === "completed") && uniqueDates.length >= (group.package_size || 12) && (
                           <Button 
@@ -1087,23 +1102,40 @@ export default function AttendancePage() {
       </Dialog>
 
       {/* Restore Past Cycle Dialog */}
-      <Dialog open={pastCycleDialog.isOpen} onOpenChange={(open) => setPastCycleDialog(prev => ({ ...prev, isOpen: open }))}>
+      <Dialog open={pastCycleDialog.isOpen} onOpenChange={(open) => setPastCycleDialog(prev => ({ ...prev, isOpen: open, showOverwriteConfirm: false, overwrite: false }))}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Thêm kỳ học quá khứ</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Ngày kết thúc kỳ học cũ</Label>
-              <Input type="date" value={pastCycleDialog.endDate} onChange={(e) => setPastCycleDialog(prev => ({ ...prev, endDate: e.target.value }))} />
-              <p className="text-xs text-muted-foreground mt-2">
-                Hệ thống sẽ tự động tính lùi lại dựa trên Lịch học cố định để tạo đủ số buổi của 1 gói học. Dữ liệu này sẽ được đặt là Kỳ 1, và kỳ hiện tại sẽ đổi thành Kỳ 2.
-              </p>
-            </div>
+            {pastCycleDialog.showOverwriteConfirm ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-sm rounded-lg border border-amber-200 dark:border-amber-800">
+                  <p className="font-semibold mb-1">⚠️ Kỳ cũ đã tồn tại!</p>
+                  <p>Chu kỳ 1 đã có dữ liệu buổi học. Nếu tiếp tục, dữ liệu cũ của Chu kỳ 1 sẽ bị <strong>xóa và thay thế</strong> bằng dữ liệu mới.</p>
+                </div>
+                <p className="text-sm text-muted-foreground">Bạn có chắc muốn ghi đè?</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>Ngày kết thúc kỳ học cũ</Label>
+                <Input type="date" value={pastCycleDialog.endDate} onChange={(e) => setPastCycleDialog(prev => ({ ...prev, endDate: e.target.value }))} />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Hệ thống sẽ tự động tính lùi lại dựa trên Lịch học cố định để tạo đủ số buổi của 1 gói học. Dữ liệu này sẽ được đặt là Kỳ 1, và kỳ hiện tại sẽ đổi thành Kỳ 2.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPastCycleDialog(prev => ({ ...prev, isOpen: false }))}>Hủy</Button>
-            <Button onClick={handleRestorePastCycle}>Khôi phục</Button>
+            <Button variant="outline" onClick={() => setPastCycleDialog(prev => ({ ...prev, isOpen: false, showOverwriteConfirm: false, overwrite: false }))}>Hủy</Button>
+            {pastCycleDialog.showOverwriteConfirm ? (
+              <Button variant="destructive" onClick={() => {
+                setPastCycleDialog(prev => ({ ...prev, showOverwriteConfirm: false }));
+                handleRestorePastCycle(true);
+              }}>Ghi đè kỳ cũ</Button>
+            ) : (
+              <Button onClick={() => handleRestorePastCycle()}>Khôi phục</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
