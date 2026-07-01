@@ -426,6 +426,26 @@ export default function AttendancePage() {
     loadData();
   };
 
+  const deleteBulkSessions = async () => {
+    if (selectedSessionIds.length === 0) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedSessionIds.length} buổi học đã chọn?`)) return;
+    
+    toast.loading("Đang xóa...", { id: "bulk-delete" });
+    const supabase = createClient();
+    
+    const { error } = await supabase.from("sessions").delete().in("id", selectedSessionIds);
+    
+    if (error) {
+      toast.error("Có lỗi xảy ra khi xóa", { id: "bulk-delete" });
+      console.error("Lỗi xóa hàng loạt:", error);
+    } else {
+      toast.success(`Đã xóa ${selectedSessionIds.length} buổi học!`, { id: "bulk-delete" });
+      setSelectedSessionIds([]);
+      setIsMultiSelectMode(false);
+      loadData();
+    }
+  };
+
   const quickTickGroup = async (group: GroupWithRelations, date: string) => {
     const supabase = createClient();
     const activeMembers = group.students.filter(s => s.is_active);
@@ -1311,9 +1331,14 @@ export default function AttendancePage() {
             <Button variant="outline" size="sm" onClick={() => setSelectedSessionIds([])} className="sm:hidden">
               Hủy
             </Button>
+            <Button variant="destructive" size="sm" onClick={deleteBulkSessions} className="shadow-md shadow-destructive/20">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1 sm:mr-2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+              <span className="hidden sm:inline">Xóa</span>
+            </Button>
             <Button size="sm" className="shadow-md shadow-primary/20" onClick={() => setBulkEditDialog(prev => ({ ...prev, isOpen: true }))}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 Z"/></svg>
-              Sửa hàng loạt
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1 sm:mr-2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 Z"/></svg>
+              <span className="hidden sm:inline">Sửa hàng loạt</span>
+              <span className="sm:hidden">Sửa</span>
             </Button>
           </div>
         </div>
